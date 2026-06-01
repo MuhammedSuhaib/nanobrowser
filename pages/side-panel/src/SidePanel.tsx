@@ -379,23 +379,56 @@ const SidePanel = () => {
     }
   }, [handleTaskState, appendMessage, stopConnection]);
 
-  // Add safety check for message sending
-  const sendMessage = useCallback(
-    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-    (message: any) => {
-      if (portRef.current?.name !== 'side-panel-connection') {
-        throw new Error('No valid connection available');
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Setup WebSocket connection
+  const setupBridge = useCallback(() => {
+    if (wsRef.current) return;
+
+    wsRef.current = new WebSocket('ws://localhost:8080');
+
+    wsRef.current.onopen = () => console.log('Connected to Gemini CLI Bridge');
+
+    wsRef.current.onmessage = event => {
+      const message = JSON.parse(event.data);
+      if (message.type === 'output') {
+        appendMessage({
+          actor: Actors.SYSTEM,
+          content: message.data,
+          timestamp: Date.now(),
+        });
+      } else if (message.type === 'status' && message.data === 'task_complete') {
+        setIsFollowUpMode(true);
+        setInputEnabled(true);
+        setShowStopButton(false);
+        setIsReplaying(false);
       }
-      try {
-        portRef.current.postMessage(message);
-      } catch (error) {
-        console.error('Failed to send message:', error);
-        stopConnection(); // Stop connection when message sending fails
-        throw error;
-      }
-    },
-    [stopConnection],
-  );
+    };
+
+    wsRef.current.onerror = error => console.error('WebSocket Error:', error);
+    wsRef.current.onclose = () => {
+      console.log('Bridge connection closed');
+      wsRef.current = null;
+    };
+  }, [appendMessage]);
+
+  useEffect(() => {
+    setupBridge();
+    return () => {
+      wsRef.current?.close();
+    };
+  }, [setupBridge]);
+
+  // Update sendMessage to use WebSocket
+  const sendMessage = useCallback((message: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message));
+      setInputEnabled(false);
+      setShowStopButton(true);
+    } else {
+      console.error('Bridge not connected');
+    }
+  }, []);
 
   // Handle replay command
   const handleReplay = async (historySessionId: string): Promise<void> => {
@@ -1005,57 +1038,7 @@ const SidePanel = () => {
         className={`flex h-screen flex-col ${isDarkMode ? 'bg-slate-900' : "bg-[url('/bg.jpg')] bg-cover bg-no-repeat"} overflow-hidden border ${isDarkMode ? 'border-sky-800' : 'border-[rgb(186,230,253)]'} rounded-2xl`}>
         <header className="header relative">
           <div className="header-logo">
-            {showHistory ? (
-              <button
-                type="button"
-                onClick={() => handleBackToChat(false)}
-                className={`${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
-                aria-label={t('nav_back_a11y')}>
-                {t('nav_back')}
-              </button>
-            ) : (
-              <img src="/icon-128.png" alt="Extension Logo" className="size-6" />
-            )}
-          </div>
-          <div className="header-icons">
-            {!showHistory && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleNewChat}
-                  onKeyDown={e => e.key === 'Enter' && handleNewChat()}
-                  className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
-                  aria-label={t('nav_newChat_a11y')}
-                  tabIndex={0}>
-                  <PiPlusBold size={20} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLoadHistory}
-                  onKeyDown={e => e.key === 'Enter' && handleLoadHistory()}
-                  className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
-                  aria-label={t('nav_loadHistory_a11y')}
-                  tabIndex={0}>
-                  <GrHistory size={20} />
-                </button>
-              </>
-            )}
-            <a
-              href="https://discord.gg/NN3ABHggMK"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'}`}>
-              <RxDiscordLogo size={20} />
-            </a>
-            <button
-              type="button"
-              onClick={() => chrome.runtime.openOptionsPage()}
-              onKeyDown={e => e.key === 'Enter' && chrome.runtime.openOptionsPage()}
-              className={`header-icon ${isDarkMode ? 'text-sky-400 hover:text-sky-300' : 'text-sky-400 hover:text-sky-500'} cursor-pointer`}
-              aria-label={t('nav_settings_a11y')}
-              tabIndex={0}>
-              <FiSettings size={20} />
-            </button>
+            <img src="/icon-128.png" alt="Extension Logo" className="size-6" />
           </div>
         </header>
         {showHistory ? (

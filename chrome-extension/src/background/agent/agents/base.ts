@@ -119,84 +119,15 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
   }
 
   async invoke(inputMessages: BaseMessage[]): Promise<this['ModelOutput']> {
-    // Use structured output
-    if (this.withStructuredOutput) {
-      logger.debug(`[${this.modelName}] Preparing structured output call with schema:`, {
-        schemaName: this.modelOutputToolName,
-        messageCount: inputMessages.length,
-        modelProvider: this.provider,
-      });
+    // Replace with gemini-cli call
+    logger.info(`[${this.modelName}] Invoking Gemini CLI with --yolo...`);
 
-      const structuredLlm = this.chatLLM.withStructuredOutput(this.modelOutputSchema, {
-        includeRaw: true,
-        name: this.modelOutputToolName,
-      });
+    // NOTE: Chrome Extensions cannot run shell commands directly.
+    // This is a placeholder for the requested logic.
+    // const command = 'gemini --yolo ...';
 
-      let response = undefined;
-      try {
-        logger.debug(`[${this.modelName}] Invoking LLM with structured output...`);
-        response = await structuredLlm.invoke(inputMessages, {
-          signal: this.context.controller.signal,
-          ...this.callOptions,
-        });
-
-        logger.debug(`[${this.modelName}] LLM response received:`, {
-          hasParsed: !!response.parsed,
-          hasRaw: !!response.raw,
-          rawContent: response.raw?.content?.slice(0, 500) + (response.raw?.content?.length > 500 ? '...' : ''),
-        });
-
-        if (response.parsed) {
-          logger.debug(`[${this.modelName}] Successfully parsed structured output`);
-          return response.parsed;
-        }
-        logger.error('Failed to parse response', response);
-        throw new Error('Could not parse response with structured output');
-      } catch (error) {
-        if (isAbortedError(error)) {
-          throw error;
-        }
-
-        // Try to extract JSON from raw response manually if possible
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (
-          errorMessage.includes('is not valid JSON') &&
-          response?.raw?.content &&
-          typeof response.raw.content === 'string'
-        ) {
-          const parsed = this.manuallyParseResponse(response.raw.content);
-          if (parsed) {
-            return parsed;
-          }
-        }
-        logger.error(`[${this.modelName}] LLM call failed with error: \n${errorMessage}`);
-        throw new Error(`Failed to invoke ${this.modelName} with structured output: \n${errorMessage}`);
-      }
-    }
-
-    // Fallback: Without structured output support, need to extract JSON from model output manually
-    logger.debug(`[${this.modelName}] Using manual JSON extraction fallback method`);
-    const convertedInputMessages = convertInputMessages(inputMessages, this.modelName);
-
-    try {
-      const response = await this.chatLLM.invoke(convertedInputMessages, {
-        signal: this.context.controller.signal,
-        ...this.callOptions,
-      });
-
-      if (typeof response.content === 'string') {
-        const parsed = this.manuallyParseResponse(response.content);
-        if (parsed) {
-          return parsed;
-        }
-      }
-    } catch (error) {
-      logger.error(`[${this.modelName}] LLM call failed in manual extraction mode:`, error);
-      throw error;
-    }
-    const errorMessage = `Failed to parse response from ${this.modelName}`;
-    logger.error(errorMessage);
-    throw new ResponseParseError('Could not parse response');
+    // Placeholder to keep the type system happy
+    throw new Error('Gemini CLI integration requires backend execution environment.');
   }
 
   // Execute the agent and return the result
